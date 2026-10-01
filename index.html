@@ -4088,5 +4088,16 @@ document.addEventListener('DOMContentLoaded', () => {
   }, 100);
 })();
 </script>
+<!-- Supabase library -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+  const { createClient } = supabase;
+  const _supabase = createClient(
+    'https://ubnxpgfuporbevmdasb.supabase.co',
+    'sb_publishable_HYrPLgAm8YyIkXQ8u_r_MQ_s06YWb9K'
+  );
+  window._supabase = _supabase;
+  console.log('Supabase connected:', _supabase);
+</script>
 </body>
 </html>
