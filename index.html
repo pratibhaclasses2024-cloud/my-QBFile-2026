@@ -1123,9 +1123,49 @@ function getSubjectEmoji(name) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOAD / SAVE
+  // ============ SUPABASE SYNC ============
+const QB_STATE_ID = 'main';
+
+async function loadDbFromSupabase() {
+  try {
+    const { data, error } = await window._supabase
+      .from('qb_state')
+      .select('data')
+      .eq('id', QB_STATE_ID)
+      .maybeSingle();
+    if (error) { console.warn('Supabase load error:', error); return null; }
+    return data ? data.data : null;
+  } catch (e) {
+    console.warn('Supabase load failed:', e);
+    return null;
+  }
+}
+
+async function saveDbToSupabase(dbObj) {
+  try {
+    const { error } = await window._supabase
+      .from('qb_state')
+      .upsert(
+        { id: QB_STATE_ID, data: dbObj, updated_at: new Date().toISOString() },
+        { onConflict: 'id' }
+      );
+    if (error) console.warn('Supabase save error:', error);
+  } catch (e) {
+    console.warn('Supabase save failed:', e);
+  }
+}
+// ========================================
+
 // ═══════════════════════════════════════════════════════════════════════════
 async function loadDb() {
   await initIndexedDB();
+    // Try Supabase first (cloud data wins)
+  const cloudData = await loadDbFromSupabase();
+  if (cloudData) {
+    console.log('☁️ Loaded question bank from Supabase');
+    Object.assign(db, cloudData);
+    return;
+  }
   let saved = await getFromIDB("master_qb_data");
   if (!saved) {
     const keys = ["modular_qb_v35_diagram_fix","modular_qb_v34_optimized","unified_qb_master_v1"];
@@ -1194,12 +1234,14 @@ function save() {
   clearTimeout(saveDebounce);
   saveDebounce = setTimeout(async () => {
     try { await saveToIDB("master_qb_data", db); } catch(e) { console.error(e); }
+    saveDbToSupabase(db);
   }, 250);
   invalidateQuestionsCache();
 }
 async function saveImmediate() {
   clearTimeout(saveDebounce);
   try { await saveToIDB("master_qb_data", db); } catch(e) { console.error(e); }
+    await saveDbToSupabase(db);
   invalidateQuestionsCache();
 }
 
