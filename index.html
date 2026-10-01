@@ -1123,40 +1123,75 @@ function getSubjectEmoji(name) {
 
 // ═══════════════════════════════════════════════════════════════════════════
 // LOAD / SAVE
-  // ============ SUPABASE SYNC ============
+  // ============ SUPABASE SYNC (chunked) ============
 const QB_STATE_ID = 'main';
+const QB_CHUNK_SIZE = 500000; // ~500 KB per chunk (safe under Supabase's ~1MB limit)
 
+// Split an object into N chunks and save each as a row in qb_chunks
+async function saveDbToSupabase(dbObj) {
+  try {
+    // Serialize once so we know the true size
+    const jsonStr = JSON.stringify(dbObj);
+    const totalBytes = jsonStr.length;
+    const totalChunks = Math.ceil(totalBytes / QB_CHUNK_SIZE);
+
+    console.log(`☁️ Saving ${totalBytes} bytes in ${totalChunks} chunk(s)...`);
+
+    // Build all chunk rows
+    const rows = [];
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * QB_CHUNK_SIZE;
+      const end = Math.min(start + QB_CHUNK_SIZE, totalBytes);
+      const slice = jsonStr.slice(start, end);
+      rows.push({
+        id: QB_STATE_ID,
+        chunk_index: i,
+        data: { chunk: slice },         // wrap so jsonb stores text cleanly
+        updated_at: new Date().toISOString()
+      });
+    }
+
+    // 1) Delete existing chunks for this id
+    const { error: delErr } = await window._supabase
+      .from('qb_chunks')
+      .delete()
+      .eq('id', QB_STATE_ID);
+    if (delErr) { console.warn('Supabase delete-chunks error:', delErr); return; }
+
+    // 2) Insert fresh chunks
+    const { error: insErr } = await window._supabase
+      .from('qb_chunks')
+      .insert(rows);
+    if (insErr) { console.warn('Supabase insert-chunks error:', insErr); return; }
+
+    console.log(`☁️ Saved to Supabase (${totalChunks} chunk${totalChunks > 1 ? 's' : ''})`);
+  } catch (e) {
+    console.warn('Supabase save failed:', e);
+  }
+}
+
+// Load all chunks for the bank and reassemble them
 async function loadDbFromSupabase() {
   try {
     const { data, error } = await window._supabase
-      .from('qb_state')
-      .select('data')
+      .from('qb_chunks')
+      .select('chunk_index, data')
       .eq('id', QB_STATE_ID)
-      .maybeSingle();
+      .order('chunk_index', { ascending: true });
+
     if (error) { console.warn('Supabase load error:', error); return null; }
-    return data ? data.data : null;
+    if (!data || data.length === 0) return null;   // nothing stored yet
+
+    // Reassemble: concatenate all chunk strings
+    const fullStr = data.map(row => row.data.chunk || '').join('');
+    console.log(`☁️ Loaded ${fullStr.length} bytes from ${data.length} chunk(s)`);
+    return JSON.parse(fullStr);
   } catch (e) {
     console.warn('Supabase load failed:', e);
     return null;
   }
 }
-
-async function saveDbToSupabase(dbObj) {
-  try {
-    const { error } = await window._supabase
-      .from('qb_state')
-      .upsert(
-        { id: QB_STATE_ID, data: dbObj, updated_at: new Date().toISOString() },
-        { onConflict: 'id' }
-      );
-    if (error) console.warn('Supabase save error:', error);
-  } catch (e) {
-    console.warn('Supabase save failed:', e);
-  }
-}
-// ========================================
-
-// ═══════════════════════════════════════════════════════════════════════════
+// ==============================================
 async function loadDb() {
   await initIndexedDB();
     // Try Supabase first (cloud data wins)
