@@ -247,10 +247,11 @@ input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid #cbd
     <h1 id="headerInstituteName">📚 Pratibha Classes</h1>
     <p id="headerInstituteTagline">Standardized Question Bank & Examination Studio</p>
   </div>
-  <div class="actions">
+   <div class="actions">
     <button class="secondary" onclick="openInstituteSettingsModal()">🏢 Institute Profile</button>
     <button class="secondary" onclick="document.getElementById('restore').click()">⬆ Restore JSON</button>
     <button class="secondary" onclick="backup()">⬇ Backup JSON</button>
+    <button id="authBtn" class="secondary" onclick="handleAuthClick()">🔑 Login</button>
   </div>
 </header>
 <nav>
@@ -4176,5 +4177,121 @@ document.addEventListener('DOMContentLoaded', () => {
   window._supabase = _supabase;
   console.log('Supabase connected:', _supabase);
 </script>
+<!-- ============ AUTH MODAL ============ -->
+<div id="authModal" style="display:none;position:fixed;inset:0;background:rgba(15,23,42,0.6);z-index:9999;align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:12px;padding:28px;max-width:420px;width:90%;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <h2 style="margin:0 0 8px 0;font-size:20px;">🔑 Admin Login</h2>
+    <p style="color:#64748b;font-size:13px;margin:0 0 20px 0;">Log in to edit the general question pool. Visitors can still browse and build papers.</p>
+
+    <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Email</label>
+    <input id="authEmail" type="email" placeholder="pratibhaclasses2024@gmail.com" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:12px;font-size:14px;box-sizing:border-box;">
+
+    <label style="display:block;font-size:12px;font-weight:600;color:#475569;margin-bottom:4px;">Password</label>
+    <input id="authPassword" type="password" placeholder="Your password" style="width:100%;padding:10px;border:1px solid #cbd5e1;border-radius:8px;margin-bottom:18px;font-size:14px;box-sizing:border-box;">
+
+    <div id="authError" style="display:none;background:#fee2e2;color:#991b1b;padding:10px;border-radius:8px;font-size:13px;margin-bottom:14px;"></div>
+
+    <div style="display:flex;gap:10px;justify-content:flex-end;">
+      <button class="secondary" onclick="closeAuthModal()">Cancel</button>
+      <button class="primary" id="authSubmitBtn" onclick="submitLogin()" style="background:#1d4ed8;">Log In</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============ AUTH LOGIC ============
+let currentUser = null;
+
+function updateAuthUI() {
+  const btn = document.getElementById('authBtn');
+  if (!btn) return;
+  if (currentUser) {
+    btn.textContent = '🚪 Logout (' + currentUser.email.split('@')[0] + ')';
+    btn.style.background = '#16a34a';
+    btn.style.color = '#fff';
+    btn.style.border = 'none';
+  } else {
+    btn.textContent = '🔑 Login';
+    btn.style.background = '';
+    btn.style.color = '';
+    btn.style.border = '';
+  }
+}
+
+function openAuthModal() {
+  document.getElementById('authModal').style.display = 'flex';
+  document.getElementById('authEmail').value = '';
+  document.getElementById('authPassword').value = '';
+  document.getElementById('authError').style.display = 'none';
+  setTimeout(() => document.getElementById('authEmail').focus(), 50);
+}
+
+function closeAuthModal() {
+  document.getElementById('authModal').style.display = 'none';
+}
+
+function handleAuthClick() {
+  if (currentUser) {
+    if (confirm('Log out of admin account?')) {
+      window._supabase.auth.signOut().then(() => {
+        currentUser = null;
+        updateAuthUI();
+        if (typeof showToast === 'function') showToast('Logged out');
+      });
+    }
+  } else {
+    openAuthModal();
+  }
+}
+
+async function submitLogin() {
+  const email = document.getElementById('authEmail').value.trim();
+  const password = document.getElementById('authPassword').value;
+  const errBox = document.getElementById('authError');
+  const submitBtn = document.getElementById('authSubmitBtn');
+
+  if (!email || !password) {
+    errBox.textContent = 'Please enter both email and password.';
+    errBox.style.display = 'block';
+    return;
+  }
+
+  submitBtn.textContent = 'Logging in…';
+  submitBtn.disabled = true;
+
+  const { data, error } = await window._supabase.auth.signInWithPassword({ email, password });
+
+  submitBtn.textContent = 'Log In';
+  submitBtn.disabled = false;
+
+  if (error) {
+    errBox.textContent = error.message;
+    errBox.style.display = 'block';
+    return;
+  }
+
+  currentUser = data.user;
+  closeAuthModal();
+  updateAuthUI();
+  if (typeof showToast === 'function') showToast('✅ Logged in as ' + currentUser.email);
+  console.log('✅ Admin logged in:', currentUser.email);
+}
+
+async function initAuth() {
+  const { data: { session } } = await window._supabase.auth.getSession();
+  currentUser = session ? session.user : null;
+  updateAuthUI();
+
+  window._supabase.auth.onAuthStateChange((_event, session) => {
+    currentUser = session ? session.user : null;
+    updateAuthUI();
+  });
+}
+</script>
+
+<script>
+window.addEventListener('load', () => { setTimeout(initAuth, 300); });
+</script>
+<!-- ==================================== -->
 </body>
 </html>
