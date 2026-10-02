@@ -1270,14 +1270,19 @@ function save() {
   clearTimeout(saveDebounce);
   saveDebounce = setTimeout(async () => {
     try { await saveToIDB("master_qb_data", db); } catch(e) { console.error(e); }
-    saveDbToSupabase(db);
+    // Only sync to cloud if admin is logged in
+    if (typeof currentUser !== 'undefined' && currentUser) {
+      saveDbToSupabase(db);
+    }
   }, 250);
   invalidateQuestionsCache();
 }
 async function saveImmediate() {
   clearTimeout(saveDebounce);
   try { await saveToIDB("master_qb_data", db); } catch(e) { console.error(e); }
+  if (typeof currentUser !== 'undefined' && currentUser) {
     await saveDbToSupabase(db);
+  }
   invalidateQuestionsCache();
 }
 
