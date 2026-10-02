@@ -242,6 +242,9 @@ input, select, textarea { width: 100%; padding: 8px 10px; border: 1px solid #cbd
 <body>
 <div id="toastContainer"></div>
 <div id="printableArea" class="hidden"></div>
+<div id="authBanner" style="display:none;background:#fef3c7;color:#92400e;padding:8px 16px;text-align:center;font-size:13px;font-weight:600;border-bottom:1px solid #fcd34d;">
+  👀 Viewing mode — <a href="#" onclick="openAuthModal();return false;" style="color:#92400e;text-decoration:underline;">Log in as admin</a> to edit the question bank.
+</div>
 <header>
   <div>
     <h1 id="headerInstituteName">📚 Pratibha Classes</h1>
@@ -1267,22 +1270,27 @@ function migrateStandardsToTree(standards) {
   db.tree = tree;
 }
 function save() {
+  // Hard block: no saves at all when logged out
+  if (typeof currentUser === 'undefined' || !currentUser) {
+    if (typeof showToast === 'function') showToast('🔑 Login required to save changes');
+    return;
+  }
   clearTimeout(saveDebounce);
   saveDebounce = setTimeout(async () => {
     try { await saveToIDB("master_qb_data", db); } catch(e) { console.error(e); }
-    // Only sync to cloud if admin is logged in
-    if (typeof currentUser !== 'undefined' && currentUser) {
-      saveDbToSupabase(db);
-    }
+    saveDbToSupabase(db);
   }, 250);
   invalidateQuestionsCache();
 }
 async function saveImmediate() {
+   // Hard block: no saves at all when logged out
+  if (typeof currentUser === 'undefined' || !currentUser) {
+    if (typeof showToast === 'function') showToast('🔑 Login required to save changes');
+    return;
+  }
   clearTimeout(saveDebounce);
   try { await saveToIDB("master_qb_data", db); } catch(e) { console.error(e); }
-  if (typeof currentUser !== 'undefined' && currentUser) {
-    await saveDbToSupabase(db);
-  }
+  await saveDbToSupabase(db);
   invalidateQuestionsCache();
 }
 
@@ -4210,6 +4218,8 @@ let currentUser = null;
 function updateAuthUI() {
   const btn = document.getElementById('authBtn');
   if (!btn) return;
+
+  // Update button appearance
   if (currentUser) {
     btn.textContent = '🚪 Logout (' + currentUser.email.split('@')[0] + ')';
     btn.style.background = '#16a34a';
@@ -4221,8 +4231,69 @@ function updateAuthUI() {
     btn.style.color = '';
     btn.style.border = '';
   }
+
+  // Show/hide the banner
+  const banner = document.getElementById('authBanner');
+  if (banner) banner.style.display = currentUser ? 'none' : 'block';
+
+  // Enable/disable all edit buttons
+  applyAuthLock();
 }
 
+// Enable or disable buttons based on auth state
+function applyAuthLock() {
+  const isLoggedIn = !!currentUser;
+
+  // Buttons that should only work when logged in
+  const lockSelectors = [
+    // Nav buttons
+    'button[onclick*="openNewTab(\'add\'"]',
+    'button[onclick*="openBulkModal"]',
+    'button[onclick*="openAddFolderModal"]',
+    'button[onclick*="openDiagramStudio"]',
+    'button[onclick*="openPaperBuilder"]'
+  ];
+
+  lockSelectors.forEach(sel => {
+    document.querySelectorAll(sel).forEach(el => {
+      if (!isLoggedIn) {
+        el.setAttribute('data-locked', '1');
+        el.style.opacity = '0.5';
+        el.style.cursor = 'not-allowed';
+        el.style.filter = 'grayscale(0.6)';
+        if (!el.dataset.lockWired) {
+          el.dataset.lockWired = '1';
+          el.addEventListener('click', blockIfLocked, true);
+        }
+      } else {
+        el.removeAttribute('data-locked');
+        el.style.opacity = '';
+        el.style.cursor = '';
+        el.style.filter = '';
+      }
+    });
+  });
+
+  // Also block inline edit buttons inside the tree (added dynamically)
+  document.querySelectorAll('[data-requires-auth]').forEach(el => {
+    el.style.display = isLoggedIn ? '' : 'none';
+  });
+}
+
+// Intercept clicks on locked buttons
+function blockIfLocked(e) {
+  const el = e.currentTarget;
+  if (el.getAttribute('data-locked') === '1') {
+    e.preventDefault();
+    e.stopPropagation();
+    if (typeof showToast === 'function') {
+      showToast('🔑 Please log in to make changes');
+    } else {
+      alert('Please log in to make changes');
+    }
+    return false;
+  }
+}
 function openAuthModal() {
   document.getElementById('authModal').style.display = 'flex';
   document.getElementById('authEmail').value = '';
@@ -4295,7 +4366,11 @@ async function initAuth() {
 </script>
 
 <script>
-window.addEventListener('load', () => { setTimeout(initAuth, 300); });
+window.addEventListener('load', () => {
+  setTimeout(initAuth, 300);
+  // After auth state is known, ensure lock reflects it
+  setTimeout(applyAuthLock, 800);
+});
 </script>
 <!-- ==================================== -->
 </body>
